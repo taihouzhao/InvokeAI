@@ -29,7 +29,6 @@ _runAlpine() {
   docker run \
     --rm \
     --interactive \
-    --tty \
     --mount source="$volumename",target=/data \
     --workdir /data \
     alpine "$@"
