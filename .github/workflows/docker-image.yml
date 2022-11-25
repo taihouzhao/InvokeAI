@@ -15,4 +15,7 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: Build the Docker image
-      run: HUGGINGFACE_TOKEN=${{ secrets.HUGGINGFACE_TOKEN }}  ./docker-build/build.sh
+      run: HUGGINGFACE_TOKEN=${{ secrets.HUGGINGFACE_TOKEN }} INVOKEAI_TAG=invokeai-x86_64  ./docker-build/build.sh
+    - name: Push image
+      run: docker push invokeai-x86_64
+      
