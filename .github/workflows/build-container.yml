@@ -7,6 +7,12 @@ on:
       - 'main'
       - 'development'
 
+env:
+  # Use docker.io for Docker Hub if empty
+  REGISTRY: ghcr.io
+  # github.repository as <account>/<repo>
+  IMAGE_NAME: ${{ github.repository }}
+  
 jobs:
   docker:
     strategy:
@@ -21,16 +27,38 @@ jobs:
           - arch: aarch64
             conda-env-file: environment-lin-aarch64.yml
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      # This is used to complete the identity challenge
+      # with sigstore/fulcio when running outside of PRs.
+      id-token: write
     name: ${{ matrix.arch }}
     steps:
       - name: prepare docker-tag
         env:
           repository: ${{ github.repository }}
         run: echo "dockertag=${repository,,}" >> $GITHUB_ENV
+      # Login against a Docker registry except on PR
+      # https://github.com/docker/login-action
+      - name: Log into registry ${{ env.REGISTRY }}
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@28218f9b04b4f3f62068d7b6ce6ca5b26e35336c
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Checkout
         uses: actions/checkout@v3
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2
+      # Extract metadata (tags, labels) for Docker
+      # https://github.com/docker/metadata-action
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@98669ae865ea3cffbcbaa878cf57c20bbf1c6c38
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
       - name: Build container
@@ -39,8 +67,10 @@ jobs:
           context: .
           file: docker-build/Dockerfile
           platforms: Linux/${{ matrix.arch }}
-          push: false
+          push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ env.dockertag }}:${{ matrix.arch }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           build-args: |
             conda_env_file=${{ matrix.conda-env-file }}
             conda_version=py39_4.12.0-Linux-${{ matrix.arch }}
