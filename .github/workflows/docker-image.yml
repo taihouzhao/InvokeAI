@@ -6,16 +6,21 @@ on:
   pull_request:
     branches: [ "main" ]
 
+env:
+  # Use docker.io for Docker Hub if empty
+  REGISTRY: ghcr.io
+  # github.repository as <account>/<repo>
+  IMAGE_NAME: ${{ github.repository }}
+  
 jobs:
 
   build:
-
     runs-on: ubuntu-latest
-
+    
     steps:
     - uses: actions/checkout@v3
     - name: Build the Docker image
-      run: HUGGINGFACE_TOKEN=${{ secrets.HUGGINGFACE_TOKEN }} INVOKEAI_TAG=invokeai-x86_64  ./docker-build/build.sh
+      run: HUGGINGFACE_TOKEN=${{ secrets.HUGGINGFACE_TOKEN }} INVOKEAI_TAG=invokeai:x86_64  ./docker-build/build.sh
     - name: Push image
-      run: docker push invokeai-x86_64
+      run: docker push ${{ env.REGISTRY }}/invokeai:x86_64
       
