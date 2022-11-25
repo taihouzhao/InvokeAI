@@ -13,14 +13,65 @@ env:
   IMAGE_NAME: ${{ github.repository }}
   
 jobs:
-
-  build:
+  docker:
+    strategy:
+      fail-fast: false
+      matrix:
+        arch:
+          - x86_64
+          - aarch64
+        include:
+          - arch: x86_64
+            conda-env-file: environment-lin-cuda.yml
+          - arch: aarch64
+            conda-env-file: environment-lin-aarch64.yml
     runs-on: ubuntu-latest
-    
+    permissions:
+      contents: read
+      packages: write
+      # This is used to complete the identity challenge
+      # with sigstore/fulcio when running outside of PRs.
+      id-token: write
+    name: ${{ matrix.arch }}
     steps:
-    - uses: actions/checkout@v3
-    - name: Build the Docker image
-      run: HUGGINGFACE_TOKEN=${{ secrets.HUGGINGFACE_TOKEN }} INVOKEAI_TAG=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/invokeai:x86_64  ./docker-build/build.sh
-    - name: Push image
-      run: docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/invokeai:x86_64
+      - name: prepare docker-tag
+        env:
+          repository: ${{ github.repository }}
+        run: echo "dockertag=${repository,,}" >> $GITHUB_ENV
+      # Login against a Docker registry except on PR
+      # https://github.com/docker/login-action
+      - name: Log into registry ${{ env.REGISTRY }}
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@28218f9b04b4f3f62068d7b6ce6ca5b26e35336c
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Checkout
+        uses: actions/checkout@v3
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      # Extract metadata (tags, labels) for Docker
+      # https://github.com/docker/metadata-action
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@98669ae865ea3cffbcbaa878cf57c20bbf1c6c38
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Build the Docker image
+        run: ./docker-build/build.sh
+        env:
+          HUGGINGFACE_TOKEN: ${{ secrets.HUGGINGFACE_TOKEN }}
+          ARCH: ${{ matrix.arch }}
+          INVOKEAI_TAG: ${{ env.REGISTRY }}/${{ env.dockertag }}:${{ matrix.arch }}
+          INVOKEAI_GIT: ${{ github.repository }}
+          INVOKEAI_BRANCH: ${{ github.ref_name }}
+          INVOKEAI_CONDA_ENV_FILE: ${{ matrix.conda-env-file }}
+
+      - name: Push image
+        run: docker push ${{ env.REGISTRY }}/${{ env.dockertag }}:${{ matrix.arch }}
       
